@@ -183,6 +183,20 @@
             </div>
         </div>
     </div>
+    
+    <!-- Job Logs Section -->
+    <div id="jobLogsSection" class="row" style="display: none;">
+        <div class="col-lg-8 mx-auto">
+            <div class="quick-register-form">
+                <h5 class="mb-3"><i class="fas fa-list-alt me-2"></i>Registration Logs</h5>
+                <div id="jobLogsContent">
+                    <div class="text-center">
+                        <i class="fas fa-spinner fa-spin me-2"></i>Loading logs...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -278,13 +292,17 @@ document.getElementById('scheduleForm').addEventListener('submit', function(e) {
     })
     .then(response => {
         if (response.data.success) {
-            alert('✅ Registration scheduled successfully!\n\nJob ID: ' + response.data.job_id + '\n\nYour registration will run automatically at the scheduled time.');
+            const jobId = response.data.job_id;
+            alert('✅ Registration scheduled successfully!\n\nJob ID: ' + jobId + '\n\nYour registration will run automatically at the scheduled time.\n\nYou can view detailed logs at: /job-logs/' + jobId);
+            
             document.getElementById('scheduleForm').reset();
             
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             tomorrow.setHours(8, 0, 0, 0);
             document.getElementById('scheduled_time').value = tomorrow.toISOString().slice(0, 16);
+            
+            showJobLogs(jobId);
         } else {
             alert('❌ Error: ' + response.data.error);
         }
@@ -297,5 +315,63 @@ document.getElementById('scheduleForm').addEventListener('submit', function(e) {
         button.disabled = false;
     });
 });
+
+function showJobLogs(jobId) {
+    document.getElementById('jobLogsSection').style.display = 'block';
+    document.getElementById('jobLogsContent').innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin me-2"></i>Loading logs...</div>';
+    
+    axios.get(`/job-logs/${jobId}`)
+    .then(response => {
+        const job = response.data.job;
+        const logs = response.data.logs;
+        
+        let html = `
+            <div class="mb-3">
+                <h6>Job Details</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Job ID:</strong> ${job.id}<br>
+                        <strong>Status:</strong> <span class="badge ${job.status === 'completed' ? 'bg-success' : job.status === 'failed' ? 'bg-danger' : 'bg-warning'}">${job.status}</span>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Scheduled:</strong> ${new Date(job.scheduled_time).toLocaleString()}<br>
+                        <strong>Created:</strong> ${new Date(job.created_at).toLocaleString()}
+                    </div>
+                </div>
+                ${job.error_message ? `<div class="alert alert-danger mt-2"><strong>Error:</strong> ${job.error_message}</div>` : ''}
+            </div>
+            <h6>Registration Logs</h6>
+            <div class="logs-container" style="max-height: 400px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px;">
+        `;
+        
+        if (logs.length === 0) {
+            html += '<div class="text-muted">No logs available yet.</div>';
+        } else {
+            logs.forEach(log => {
+                const timestamp = new Date(log.timestamp).toLocaleString();
+                const levelClass = log.level === 'error' ? 'text-danger' : log.level === 'warning' ? 'text-warning' : 'text-info';
+                html += `
+                    <div class="log-entry mb-2 p-2 border-bottom">
+                        <div class="d-flex justify-content-between">
+                            <span class="${levelClass}"><strong>[${log.level.toUpperCase()}]</strong></span>
+                            <small class="text-muted">${timestamp}</small>
+                        </div>
+                        <div class="log-message">${log.message}</div>
+                    </div>
+                `;
+            });
+        }
+        
+        html += '</div>';
+        document.getElementById('jobLogsContent').innerHTML = html;
+    })
+    .catch(error => {
+        document.getElementById('jobLogsContent').innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Error loading logs:</strong> ${error.response?.data?.error || error.message}
+            </div>
+        `;
+    });
+}
 </script>
 {% endblock %}

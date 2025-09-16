@@ -296,6 +296,31 @@ def get_schedules():
         } for s in schedules]
     })
 
+@app.route('/job-logs/<int:job_id>')
+def job_logs(job_id):
+    job = RegistrationJob.query.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    logs = RegistrationLog.query.filter_by(job_id=job_id).order_by(RegistrationLog.timestamp.desc()).all()
+    
+    return jsonify({
+        'job': {
+            'id': job.id,
+            'status': job.status,
+            'scheduled_time': job.scheduled_time.isoformat(),
+            'created_at': job.created_at.isoformat(),
+            'completed_at': job.completed_at.isoformat() if job.completed_at else None,
+            'error_message': job.error_message
+        },
+        'logs': [{
+            'id': log.id,
+            'message': log.message,
+            'level': log.level,
+            'timestamp': log.timestamp.isoformat()
+        } for log in logs]
+    })
+
 @app.route('/quick-register', methods=['GET', 'POST'])
 def quick_register():
     if request.method == 'POST':
@@ -529,8 +554,8 @@ def try_registration(job_id, job):
                 user.cookies_expiry = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
                 db.session.commit()
         
-        driver.get("https://bssoweb.gwu.edu:8002/StudentRegistrationSsb/ssb/classRegistration/classRegistration")
-        log_job_message(job_id, "Navigated to class registration page")
+        driver.get("https://bssoweb.gwu.edu:8002/StudentRegistrationSsb/ssb/term/termSelection?mode=registration")
+        log_job_message(job_id, "Navigated to term selection page")
         
         wait = WebDriverWait(driver, 10)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
@@ -547,6 +572,11 @@ def try_registration(job_id, job):
                 submit_term.click()
                 log_job_message(job_id, "Submitted term selection")
                 time.sleep(3)
+                
+                driver.get("https://bssoweb.gwu.edu:8002/StudentRegistrationSsb/ssb/classRegistration/classRegistration")
+                log_job_message(job_id, "Navigated to class registration page after term selection")
+                time.sleep(2)
+                
             except Exception as e:
                 log_job_message(job_id, f"Could not select term: {e}")
                 return False
@@ -590,14 +620,41 @@ def try_registration(job_id, job):
             log_job_message(job_id, f"Could not find submit button: {e}")
             return False
         
-        time.sleep(2)
+        time.sleep(3)
         
         page_text = driver.find_element(By.TAG_NAME, "body").text
-        if "successfully" in page_text.lower() or "registered" in page_text.lower():
-            log_job_message(job_id, "Registration appears successful!")
+        page_html = driver.page_source
+        
+        log_job_message(job_id, f"Registration attempt completed. Page content: {page_text[:500]}...")
+        
+        success_indicators = ["successfully", "registered", "added to your schedule", "registration successful"]
+        error_indicators = ["error", "failed", "unable to register", "registration failed", "closed", "full", "prerequisite", "restriction", "time conflict", "hold", "not eligible"]
+        
+        page_lower = page_text.lower()
+        
+        has_success = any(indicator in page_lower for indicator in success_indicators)
+        has_error = any(indicator in page_lower for indicator in error_indicators)
+        
+        if has_success and not has_error:
+            log_job_message(job_id, "✅ Registration appears successful!")
             return True
+        elif has_error:
+            error_messages = []
+            try:
+                error_elements = driver.find_elements(By.CSS_SELECTOR, ".alert-danger, .error, .warning, [class*='error'], [class*='alert']")
+                for element in error_elements:
+                    if element.text.strip():
+                        error_messages.append(element.text.strip())
+            except:
+                pass
+            
+            if error_messages:
+                log_job_message(job_id, f"❌ Registration failed with errors: {'; '.join(error_messages)}")
+            else:
+                log_job_message(job_id, f"❌ Registration failed. Page content: {page_text[:300]}...")
+            return False
         else:
-            log_job_message(job_id, f"Registration may have failed. Check results: {page_text[:300]}...")
+            log_job_message(job_id, f"⚠️ Registration status unclear. Page content: {page_text[:300]}...")
             return False
         
     except Exception as e:
