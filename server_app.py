@@ -4,7 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
@@ -40,13 +40,16 @@ class User(db.Model):
 
 class RegistrationJob(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     crns = db.Column(db.Text, nullable=False)
     scheduled_time = db.Column(db.DateTime, nullable=False)
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     completed_at = db.Column(db.DateTime, nullable=True)
     error_message = db.Column(db.Text, nullable=True)
+    gw_username = db.Column(db.String(100), nullable=True)
+    gw_password = db.Column(db.String(200), nullable=True)
+    term = db.Column(db.String(50), nullable=True)
 
 class RegistrationLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -297,36 +300,77 @@ def get_schedules():
 def quick_register():
     if request.method == 'POST':
         data = request.get_json()
-        gw_username = data.get('gw_username', '').strip()
-        gw_password = data.get('gw_password', '').strip()
-        crns = data.get('crns', [])
-        scheduled_time_str = data.get('scheduled_time')
+        action = data.get('action')
         
-        if not gw_username or not gw_password:
-            return jsonify({'error': 'GW username and password are required'}), 400
+        if action == 'test_login':
+            gw_username = data.get('gw_username', '').strip()
+            gw_password = data.get('gw_password', '').strip()
+            
+            if not gw_username or not gw_password:
+                return jsonify({'error': 'GW username and password are required'}), 400
+            
+            success, message = test_gw_login(gw_username, gw_password)
+            return jsonify({'success': success, 'message': message})
         
-        if not crns:
-            return jsonify({'error': 'At least one CRN is required'}), 400
-        
-        try:
-            scheduled_time = datetime.datetime.fromisoformat(scheduled_time_str.replace('Z', '+00:00'))
-        except ValueError:
-            return jsonify({'error': 'Invalid date format'}), 400
-        
-        job = RegistrationJob(
-            user_id=None,
-            crns=json.dumps(crns),
-            scheduled_time=scheduled_time
-        )
-        
-        db.session.add(job)
-        db.session.commit()
-        
-        schedule_job(job.id)
-        
-        return jsonify({'success': True, 'job_id': job.id, 'message': 'Registration scheduled successfully!'})
+        elif action == 'schedule':
+            gw_username = data.get('gw_username', '').strip()
+            gw_password = data.get('gw_password', '').strip()
+            crns = data.get('crns', [])
+            scheduled_time_str = data.get('scheduled_time')
+            term = data.get('term', '').strip()
+            
+            if not gw_username or not gw_password:
+                return jsonify({'error': 'GW username and password are required'}), 400
+            
+            if not crns:
+                return jsonify({'error': 'At least one CRN is required'}), 400
+            
+            if not term:
+                return jsonify({'error': 'Please select a term'}), 400
+            
+            try:
+                scheduled_time = datetime.datetime.fromisoformat(scheduled_time_str.replace('Z', '+00:00'))
+            except ValueError:
+                return jsonify({'error': 'Invalid date format'}), 400
+            
+            job = RegistrationJob(
+                user_id=None,
+                crns=json.dumps(crns),
+                scheduled_time=scheduled_time,
+                gw_username=gw_username,
+                gw_password=gw_password,
+                term=term
+            )
+            
+            db.session.add(job)
+            db.session.commit()
+            
+            schedule_job(job.id)
+            
+            return jsonify({'success': True, 'job_id': job.id, 'message': 'Registration scheduled successfully!'})
     
     return render_template('quick_register.html')
+
+def test_gw_login(gw_username, gw_password):
+    driver = create_driver(headless=True)
+    if not driver:
+        return False, "Failed to create browser driver"
+    
+    try:
+        temp_user = type('User', (), {'gw_username': gw_username, 'gw_password': gw_password})()
+        success, cookies = perform_login_and_save_cookies(driver, temp_user)
+        
+        if success:
+            return True, "GW login successful! You can now schedule your registration."
+        else:
+            return False, "GW login failed. Please check your credentials and try again."
+    
+    except Exception as e:
+        return False, f"Login test failed: {str(e)}"
+    
+    finally:
+        if 'driver' in locals():
+            driver.quit()
 
 def create_driver(headless=True):
     chrome_options = Options()
@@ -455,6 +499,11 @@ def try_registration(job_id, job):
         gw_password = user.gw_password
         session_cookies = user.session_cookies
         cookies_expiry = user.cookies_expiry
+    elif job.gw_username and job.gw_password:
+        gw_username = job.gw_username
+        gw_password = job.gw_password
+        session_cookies = None
+        cookies_expiry = None
     else:
         return False
     
@@ -480,53 +529,66 @@ def try_registration(job_id, job):
                 user.cookies_expiry = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
                 db.session.commit()
         
-        driver.get("https://bssoweb.gwu.edu:8002/StudentRegistrationSsb/ssb/registration/")
-        log_job_message(job_id, "Navigated to registration page")
+        driver.get("https://bssoweb.gwu.edu:8002/StudentRegistrationSsb/ssb/classRegistration/classRegistration")
+        log_job_message(job_id, "Navigated to class registration page")
         
         wait = WebDriverWait(driver, 10)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         
+        if job.term:
+            try:
+                term_select = driver.find_element(By.ID, "term_id")
+                select = Select(term_select)
+                select.select_by_value(job.term)
+                log_job_message(job_id, f"Selected term: {job.term}")
+                time.sleep(2)
+                
+                submit_term = driver.find_element(By.ID, "term-go")
+                submit_term.click()
+                log_job_message(job_id, "Submitted term selection")
+                time.sleep(3)
+            except Exception as e:
+                log_job_message(job_id, f"Could not select term: {e}")
+                return False
+        
+        try:
+            enter_crns_tab = driver.find_element(By.XPATH, "//a[contains(text(), 'Enter CRNs')]")
+            enter_crns_tab.click()
+            log_job_message(job_id, "Clicked Enter CRNs tab")
+            time.sleep(2)
+        except Exception as e:
+            log_job_message(job_id, f"Could not find Enter CRNs tab: {e}")
+            return False
+        
         crns = json.loads(job.crns)
         log_job_message(job_id, f"Attempting to register for CRNs: {', '.join(crns)}")
         
-        for i, crn in enumerate(crns, 1):
+        for i, crn in enumerate(crns):
             try:
-                crn_input = driver.find_element(By.ID, f"txt_crn{i}")
+                crn_input = driver.find_element(By.ID, "txt_crn1")
                 crn_input.clear()
                 crn_input.send_keys(crn)
-                log_job_message(job_id, f"Entered CRN {crn} in field {i}")
-                time.sleep(0.1)
-            except:
-                try:
-                    crn_inputs = driver.find_elements(By.CSS_SELECTOR, "input[name*='crn'], input[id*='crn']")
-                    for inp in crn_inputs:
-                        if not inp.get_attribute("value"):
-                            inp.clear()
-                            inp.send_keys(crn)
-                            log_job_message(job_id, f"Entered CRN {crn}")
-                            break
-                except Exception as e:
-                    log_job_message(job_id, f"Error entering CRN {crn}: {str(e)}", "error")
-        
-        time.sleep(0.5)
-        
-        submit_button = driver.find_element(By.ID, "add_crn_button")
-        submit_button.click()
-        log_job_message(job_id, "Clicked Add Courses button")
-        
-        time.sleep(1)
+                log_job_message(job_id, f"Entered CRN {crn}")
+                time.sleep(0.5)
+                
+                if i < len(crns) - 1:
+                    add_another_button = driver.find_element(By.ID, "add_crn_button")
+                    add_another_button.click()
+                    log_job_message(job_id, f"Clicked 'Add Another CRN' for CRN {crn}")
+                    time.sleep(1)
+                    
+            except Exception as e:
+                log_job_message(job_id, f"Error entering CRN {crn}: {str(e)}")
+                return False
         
         try:
-            register_button = driver.find_element(By.ID, "register_button")
-            register_button.click()
-            log_job_message(job_id, "Clicked Register button")
-        except:
-            try:
-                register_button = driver.find_element(By.XPATH, "//input[@value='Register']")
-                register_button.click()
-                log_job_message(job_id, "Clicked Register button (alternative)")
-            except:
-                log_job_message(job_id, "Could not find register button", "warning")
+            submit_button = driver.find_element(By.ID, "register_button")
+            submit_button.click()
+            log_job_message(job_id, "Clicked Submit button")
+            time.sleep(3)
+        except Exception as e:
+            log_job_message(job_id, f"Could not find submit button: {e}")
+            return False
         
         time.sleep(2)
         

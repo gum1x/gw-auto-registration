@@ -92,55 +92,94 @@
     <div class="row">
         <div class="col-lg-8 mx-auto">
             <div class="quick-register-form">
-                <h3 class="mb-4"><i class="fas fa-rocket me-2"></i>Schedule Your Registration</h3>
+                <h3 class="mb-4"><i class="fas fa-rocket me-2"></i>GW Auto-Registration</h3>
                 
-                <form id="quickRegisterForm">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="gw_username" class="form-label">GW Username</label>
-                            <input type="text" class="form-control" id="gw_username" placeholder="Your GW NetID" required>
-                            <div class="form-text">Your GW NetID (without @gwu.edu)</div>
+                <!-- Step 1: Login Test -->
+                <div id="loginStep" class="step">
+                    <h5 class="mb-3"><i class="fas fa-sign-in-alt me-2"></i>Step 1: Test Your GW Login</h5>
+                    <form id="loginTestForm">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="gw_username" class="form-label">GW Username</label>
+                                <input type="text" class="form-control" id="gw_username" placeholder="Your GW NetID" required>
+                                <div class="form-text">Your GW NetID (without @gwu.edu)</div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="gw_password" class="form-label">GW Password</label>
+                                <input type="password" class="form-control" id="gw_password" placeholder="Your GW password" required>
+                                <div class="form-text">Your GW account password</div>
+                            </div>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="gw_password" class="form-label">GW Password</label>
-                            <input type="password" class="form-control" id="gw_password" placeholder="Your GW password" required>
-                            <div class="form-text">Your GW account password</div>
+                        
+                        <div class="alert alert-warning" role="alert">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Important:</strong> We'll test your login first to make sure your credentials work before scheduling.
                         </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="crns" class="form-label">CRNs (Course Reference Numbers)</label>
-                        <input type="text" class="form-control" id="crns" placeholder="12345, 23456, 34567" required>
-                        <div class="form-text">Enter CRNs separated by commas</div>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label for="scheduled_time" class="form-label">Scheduled Time</label>
-                        <input type="datetime-local" class="form-control" id="scheduled_time" required>
-                        <div class="form-text">When should the registration run?</div>
-                    </div>
-                    
-                    <div class="alert alert-info" role="alert">
-                        <i class="fas fa-info-circle me-2"></i>
-                        <strong>Pro Tip:</strong> Set your registration time to run exactly when registration opens for the best chance of success!
-                    </div>
-                    
-                    <div class="feature-highlight">
-                        <h6><i class="fas fa-shield-alt me-2"></i>Security & Privacy</h6>
-                        <ul class="mb-0">
-                            <li>Your credentials are only used for the scheduled registration</li>
-                            <li>No account creation required</li>
-                            <li>Registration runs automatically at your specified time</li>
-                            <li>You'll receive confirmation when the job is scheduled</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="fas fa-calendar-plus me-2"></i>Schedule Registration
-                        </button>
-                    </div>
-                </form>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-key me-2"></i>Test GW Login
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                
+                <!-- Step 2: Schedule Registration -->
+                <div id="scheduleStep" class="step" style="display: none;">
+                    <h5 class="mb-3"><i class="fas fa-calendar-plus me-2"></i>Step 2: Schedule Your Registration</h5>
+                    <form id="scheduleForm">
+                        <div class="mb-3">
+                            <label for="term" class="form-label">Term</label>
+                            <select class="form-select" id="term" required>
+                                <option value="">Select a term...</option>
+                                <option value="202410">Fall 2024</option>
+                                <option value="202420">Spring 2025</option>
+                                <option value="202430">Summer 2025</option>
+                                <option value="202510">Fall 2025</option>
+                                <option value="202520">Spring 2026</option>
+                            </select>
+                            <div class="form-text">Select the term you want to register for</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="crns" class="form-label">CRNs (Course Reference Numbers)</label>
+                            <input type="text" class="form-control" id="crns" placeholder="12345, 23456, 34567" required>
+                            <div class="form-text">Enter CRNs separated by commas</div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label for="scheduled_time" class="form-label">Scheduled Time</label>
+                            <input type="datetime-local" class="form-control" id="scheduled_time" required>
+                            <div class="form-text">When should the registration run?</div>
+                        </div>
+                        
+                        <div class="alert alert-info" role="alert">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Pro Tip:</strong> Set your registration time to run exactly when registration opens for the best chance of success!
+                        </div>
+                        
+                        <div class="alert alert-warning" role="alert">
+                            <i class="fas fa-clock me-2"></i>
+                            <strong>Cookie Warning:</strong> Cookies may not save properly. We recommend scheduling your registration to run 24 hours before registration opens, so you can re-login if needed.
+                        </div>
+                        
+                        <div class="feature-highlight">
+                            <h6><i class="fas fa-shield-alt me-2"></i>Security & Privacy</h6>
+                            <ul class="mb-0">
+                                <li>Your credentials are only used for the scheduled registration</li>
+                                <li>No account creation required</li>
+                                <li>Registration runs automatically at your specified time</li>
+                                <li>System will retry every minute for 5 minutes if registration isn't open yet</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="fas fa-calendar-plus me-2"></i>Schedule Registration
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
@@ -156,16 +195,61 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('scheduled_time').value = tomorrow.toISOString().slice(0, 16);
 });
 
-document.getElementById('quickRegisterForm').addEventListener('submit', function(e) {
+document.getElementById('loginTestForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
     const gw_username = document.getElementById('gw_username').value.trim();
     const gw_password = document.getElementById('gw_password').value.trim();
+    
+    if (!gw_username || !gw_password) {
+        alert('Please enter both GW username and password');
+        return;
+    }
+    
+    const button = document.querySelector('#loginTestForm button[type="submit"]');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Testing Login...';
+    button.disabled = true;
+    
+    axios.post('/quick-register', {
+        action: 'test_login',
+        gw_username: gw_username,
+        gw_password: gw_password
+    })
+    .then(response => {
+        if (response.data.success) {
+            alert('✅ ' + response.data.message);
+            document.getElementById('loginStep').style.display = 'none';
+            document.getElementById('scheduleStep').style.display = 'block';
+        } else {
+            alert('❌ ' + response.data.message);
+        }
+    })
+    .catch(error => {
+        alert('❌ Error: ' + (error.response?.data?.error || error.message));
+    })
+    .finally(() => {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+});
+
+document.getElementById('scheduleForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const gw_username = document.getElementById('gw_username').value.trim();
+    const gw_password = document.getElementById('gw_password').value.trim();
+    const term = document.getElementById('term').value;
     const crns = document.getElementById('crns').value.split(',').map(crn => crn.trim()).filter(crn => crn);
     const scheduled_time = document.getElementById('scheduled_time').value;
     
     if (!gw_username || !gw_password) {
         alert('Please enter both GW username and password');
+        return;
+    }
+    
+    if (!term) {
+        alert('Please select a term');
         return;
     }
     
@@ -179,21 +263,23 @@ document.getElementById('quickRegisterForm').addEventListener('submit', function
         return;
     }
     
-    const button = document.querySelector('button[type="submit"]');
+    const button = document.querySelector('#scheduleForm button[type="submit"]');
     const originalText = button.innerHTML;
     button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Scheduling...';
     button.disabled = true;
     
     axios.post('/quick-register', {
+        action: 'schedule',
         gw_username: gw_username,
         gw_password: gw_password,
+        term: term,
         crns: crns,
         scheduled_time: scheduled_time
     })
     .then(response => {
         if (response.data.success) {
             alert('✅ Registration scheduled successfully!\n\nJob ID: ' + response.data.job_id + '\n\nYour registration will run automatically at the scheduled time.');
-            document.getElementById('quickRegisterForm').reset();
+            document.getElementById('scheduleForm').reset();
             
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
