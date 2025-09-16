@@ -74,8 +74,6 @@ def login_required(f):
 
 @app.route('/')
 def index():
-    if 'user_id' in session:
-        return redirect(url_for('dashboard'))
     return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -295,6 +293,41 @@ def get_schedules():
         } for s in schedules]
     })
 
+@app.route('/quick-register', methods=['GET', 'POST'])
+def quick_register():
+    if request.method == 'POST':
+        data = request.get_json()
+        gw_username = data.get('gw_username', '').strip()
+        gw_password = data.get('gw_password', '').strip()
+        crns = data.get('crns', [])
+        scheduled_time_str = data.get('scheduled_time')
+        
+        if not gw_username or not gw_password:
+            return jsonify({'error': 'GW username and password are required'}), 400
+        
+        if not crns:
+            return jsonify({'error': 'At least one CRN is required'}), 400
+        
+        try:
+            scheduled_time = datetime.datetime.fromisoformat(scheduled_time_str.replace('Z', '+00:00'))
+        except ValueError:
+            return jsonify({'error': 'Invalid date format'}), 400
+        
+        job = RegistrationJob(
+            user_id=None,
+            crns=json.dumps(crns),
+            scheduled_time=scheduled_time
+        )
+        
+        db.session.add(job)
+        db.session.commit()
+        
+        schedule_job(job.id)
+        
+        return jsonify({'success': True, 'job_id': job.id, 'message': 'Registration scheduled successfully!'})
+    
+    return render_template('quick_register.html')
+
 def create_driver(headless=True):
     chrome_options = Options()
     if headless:
@@ -387,38 +420,65 @@ def execute_registration_job(job_id):
     
     log_job_message(job_id, f"Starting FAST registration job for {len(json.loads(job.crns))} CRNs")
     
-    user = User.query.get(job.user_id)
-    if not user or not user.gw_username or not user.gw_password:
-        job.status = 'failed'
-        job.error_message = 'User credentials not configured'
-        db.session.commit()
-        return
+    max_attempts = 5
+    attempt = 0
+    
+    while attempt < max_attempts:
+        attempt += 1
+        log_job_message(job_id, f"Registration attempt {attempt}/{max_attempts}")
+        
+        success = try_registration(job_id, job)
+        
+        if success:
+            log_job_message(job_id, f"Registration successful on attempt {attempt}")
+            job.status = 'completed'
+            job.completed_at = datetime.datetime.utcnow()
+            db.session.commit()
+            return
+        
+        if attempt < max_attempts:
+            log_job_message(job_id, f"Registration failed on attempt {attempt}, retrying in 1 minute...")
+            time.sleep(60)
+        else:
+            log_job_message(job_id, f"Registration failed after {max_attempts} attempts")
+            job.status = 'failed'
+            job.error_message = f'Registration failed after {max_attempts} attempts - registration may not be open yet'
+            db.session.commit()
+            return
+
+def try_registration(job_id, job):
+    if job.user_id:
+        user = User.query.get(job.user_id)
+        if not user or not user.gw_username or not user.gw_password:
+            return False
+        gw_username = user.gw_username
+        gw_password = user.gw_password
+        session_cookies = user.session_cookies
+        cookies_expiry = user.cookies_expiry
+    else:
+        return False
     
     driver = create_driver(headless=True)
     if not driver:
-        job.status = 'failed'
-        job.error_message = 'Failed to create browser driver'
-        db.session.commit()
-        return
+        return False
     
     try:
         cookies_loaded = False
-        if user.session_cookies and user.cookies_expiry and user.cookies_expiry > datetime.datetime.utcnow():
+        if session_cookies and cookies_expiry and cookies_expiry > datetime.datetime.utcnow():
             log_job_message(job_id, "Using saved cookies for instant login")
-            cookies_loaded = load_cookies_to_driver(driver, user.session_cookies)
+            cookies_loaded = load_cookies_to_driver(driver, session_cookies)
         
         if not cookies_loaded:
             log_job_message(job_id, "Performing fresh login")
-            success, cookies = perform_login_and_save_cookies(driver, user)
+            temp_user = type('User', (), {'gw_username': gw_username, 'gw_password': gw_password})()
+            success, cookies = perform_login_and_save_cookies(driver, temp_user)
             if not success:
-                job.status = 'failed'
-                job.error_message = 'Login failed'
-                db.session.commit()
-                return
+                return False
             
-            user.session_cookies = json.dumps(cookies)
-            user.cookies_expiry = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
-            db.session.commit()
+            if job.user_id:
+                user.session_cookies = json.dumps(cookies)
+                user.cookies_expiry = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+                db.session.commit()
         
         driver.get("https://bssoweb.gwu.edu:8002/StudentRegistrationSsb/ssb/registration/")
         log_job_message(job_id, "Navigated to registration page")
@@ -473,20 +533,14 @@ def execute_registration_job(job_id):
         page_text = driver.find_element(By.TAG_NAME, "body").text
         if "successfully" in page_text.lower() or "registered" in page_text.lower():
             log_job_message(job_id, "Registration appears successful!")
-            job.status = 'completed'
+            return True
         else:
-            log_job_message(job_id, f"Registration completed. Check results: {page_text[:300]}...")
-            job.status = 'completed'
-        
-        job.completed_at = datetime.datetime.utcnow()
-        db.session.commit()
+            log_job_message(job_id, f"Registration may have failed. Check results: {page_text[:300]}...")
+            return False
         
     except Exception as e:
-        job.status = 'failed'
-        job.error_message = str(e)
-        job.completed_at = datetime.datetime.utcnow()
-        db.session.commit()
         log_job_message(job_id, f"Registration failed: {str(e)}", "error")
+        return False
     
     finally:
         driver.quit()

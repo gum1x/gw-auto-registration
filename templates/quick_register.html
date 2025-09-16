@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}Quick Registration - GW Auto-Registration{% endblock %}
+
+{% block content %}
+<style>
+.quick-register-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 3rem 0;
+    margin-bottom: 2rem;
+    border-radius: 15px;
+}
+
+.quick-register-form {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.form-control, .form-select {
+    border-radius: 10px;
+    border: 2px solid #e9ecef;
+    padding: 0.75rem 1rem;
+    transition: all 0.2s ease;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 10px;
+    padding: 0.75rem 2rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+    transform: translateY(-1px);
+}
+
+.alert {
+    border-radius: 10px;
+    border: none;
+}
+
+.feature-highlight {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+}
+
+@media (max-width: 768px) {
+    .quick-register-header {
+        padding: 2rem 0;
+    }
+    
+    .quick-register-form {
+        padding: 1.5rem;
+    }
+}
+</style>
+
+<div class="container my-5">
+    <div class="quick-register-header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="mb-2"><i class="fas fa-bolt me-3"></i>Quick Registration</h1>
+                    <p class="mb-0 opacity-75">No account needed! Just enter your GW credentials and schedule your registration.</p>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <a href="{{ url_for('login') }}" class="btn btn-light me-2 mb-2">
+                        <i class="fas fa-user me-2"></i>Create Account
+                    </a>
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-light mb-2">
+                        <i class="fas fa-home me-2"></i>Home
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="quick-register-form">
+                <h3 class="mb-4"><i class="fas fa-rocket me-2"></i>Schedule Your Registration</h3>
+                
+                <form id="quickRegisterForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="gw_username" class="form-label">GW Username</label>
+                            <input type="text" class="form-control" id="gw_username" placeholder="Your GW NetID" required>
+                            <div class="form-text">Your GW NetID (without @gwu.edu)</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="gw_password" class="form-label">GW Password</label>
+                            <input type="password" class="form-control" id="gw_password" placeholder="Your GW password" required>
+                            <div class="form-text">Your GW account password</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="crns" class="form-label">CRNs (Course Reference Numbers)</label>
+                        <input type="text" class="form-control" id="crns" placeholder="12345, 23456, 34567" required>
+                        <div class="form-text">Enter CRNs separated by commas</div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="scheduled_time" class="form-label">Scheduled Time</label>
+                        <input type="datetime-local" class="form-control" id="scheduled_time" required>
+                        <div class="form-text">When should the registration run?</div>
+                    </div>
+                    
+                    <div class="alert alert-info" role="alert">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Pro Tip:</strong> Set your registration time to run exactly when registration opens for the best chance of success!
+                    </div>
+                    
+                    <div class="feature-highlight">
+                        <h6><i class="fas fa-shield-alt me-2"></i>Security & Privacy</h6>
+                        <ul class="mb-0">
+                            <li>Your credentials are only used for the scheduled registration</li>
+                            <li>No account creation required</li>
+                            <li>Registration runs automatically at your specified time</li>
+                            <li>You'll receive confirmation when the job is scheduled</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-calendar-plus me-2"></i>Schedule Registration
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(8, 0, 0, 0);
+    document.getElementById('scheduled_time').value = tomorrow.toISOString().slice(0, 16);
+});
+
+document.getElementById('quickRegisterForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const gw_username = document.getElementById('gw_username').value.trim();
+    const gw_password = document.getElementById('gw_password').value.trim();
+    const crns = document.getElementById('crns').value.split(',').map(crn => crn.trim()).filter(crn => crn);
+    const scheduled_time = document.getElementById('scheduled_time').value;
+    
+    if (!gw_username || !gw_password) {
+        alert('Please enter both GW username and password');
+        return;
+    }
+    
+    if (crns.length === 0) {
+        alert('Please enter at least one CRN');
+        return;
+    }
+    
+    if (!scheduled_time) {
+        alert('Please select a scheduled time');
+        return;
+    }
+    
+    const button = document.querySelector('button[type="submit"]');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Scheduling...';
+    button.disabled = true;
+    
+    axios.post('/quick-register', {
+        gw_username: gw_username,
+        gw_password: gw_password,
+        crns: crns,
+        scheduled_time: scheduled_time
+    })
+    .then(response => {
+        if (response.data.success) {
+            alert('✅ Registration scheduled successfully!\n\nJob ID: ' + response.data.job_id + '\n\nYour registration will run automatically at the scheduled time.');
+            document.getElementById('quickRegisterForm').reset();
+            
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(8, 0, 0, 0);
+            document.getElementById('scheduled_time').value = tomorrow.toISOString().slice(0, 16);
+        } else {
+            alert('❌ Error: ' + response.data.error);
+        }
+    })
+    .catch(error => {
+        alert('❌ Error: ' + (error.response?.data?.error || error.message));
+    })
+    .finally(() => {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+});
+</script>
+{% endblock %}
