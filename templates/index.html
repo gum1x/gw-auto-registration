@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}GW Auto-Registration - Home{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6">
+                <h1 class="display-4 fw-bold mb-4">Never Miss Class Registration Again</h1>
+                <p class="lead mb-4">Automate your GW class registration with our secure, server-based system. Schedule your registration to run exactly when registration opens.</p>
+                <div class="d-flex gap-3">
+                    <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg">
+                        <i class="fas fa-user-plus me-2"></i>Get Started
+                    </a>
+                    <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">
+                        <i class="fas fa-sign-in-alt me-2"></i>Login
+                    </a>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="text-center">
+                    <i class="fas fa-clock fa-10x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container my-5">
+    <div class="row">
+        <div class="col-lg-4 mb-4">
+            <div class="card feature-card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-shield-alt fa-3x text-primary mb-3"></i>
+                    <h5 class="card-title">Secure & Private</h5>
+                    <p class="card-text">Your credentials are encrypted and stored securely. We never store your actual passwords in plain text.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 mb-4">
+            <div class="card feature-card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-bolt fa-3x text-primary mb-3"></i>
+                    <h5 class="card-title">Lightning Fast</h5>
+                    <p class="card-text">Our automated system registers for classes in milliseconds, giving you the best chance at getting your preferred schedule.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 mb-4">
+            <div class="card feature-card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-calendar-alt fa-3x text-primary mb-3"></i>
+                    <h5 class="card-title">Scheduled Registration</h5>
+                    <p class="card-text">Set your registration to run at exactly the right time. No more staying up late or waking up early.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="bg-light py-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 mx-auto text-center">
+                <h2 class="mb-4">How It Works</h2>
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <div class="d-flex flex-column align-items-center">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                                <span class="fw-bold">1</span>
+                            </div>
+                            <h6>Create Account</h6>
+                            <small class="text-muted">Sign up with your email</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="d-flex flex-column align-items-center">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                                <span class="fw-bold">2</span>
+                            </div>
+                            <h6>Add Credentials</h6>
+                            <small class="text-muted">Securely store your GW login</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="d-flex flex-column align-items-center">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                                <span class="fw-bold">3</span>
+                            </div>
+                            <h6>Schedule Registration</h6>
+                            <small class="text-muted">Pick your time and CRNs</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="d-flex flex-column align-items-center">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                                <span class="fw-bold">4</span>
+                            </div>
+                            <h6>Relax & Wait</h6>
+                            <small class="text-muted">We handle the rest!</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

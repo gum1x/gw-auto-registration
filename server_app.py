@@ -1,0 +1,365 @@
+
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+import threading
+import time
+import datetime
+import json
+import os
+import secrets
+from functools import wraps
+import schedule
+import atexit
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///gw_registration.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(120), nullable=False)
+    gw_username = db.Column(db.String(80), nullable=True)
+    gw_password = db.Column(db.String(120), nullable=True)
+    two_fa_secret = db.Column(db.String(120), nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+class RegistrationJob(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    crns = db.Column(db.Text, nullable=False)
+    scheduled_time = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.String(20), default='pending')
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+
+class RegistrationLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey('registration_job.id'), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    level = db.Column(db.String(20), default='info')
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/')
+def index():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return render_template('index.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and check_password_hash(user.password_hash, password):
+            session['user_id'] = user.id
+            return redirect(url_for('dashboard'))
+        else:
+            return render_template('login.html', error='Invalid credentials')
+    
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        email = request.form['email']
+        password = request.form['password']
+        
+        if User.query.filter_by(username=username).first():
+            return render_template('register.html', error='Username already exists')
+        
+        if User.query.filter_by(email=email).first():
+            return render_template('register.html', error='Email already registered')
+        
+        user = User(
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(password)
+        )
+        
+        db.session.add(user)
+        db.session.commit()
+        
+        session['user_id'] = user.id
+        return redirect(url_for('setup_credentials'))
+    
+    return render_template('register.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    return redirect(url_for('index'))
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    user = User.query.get(session['user_id'])
+    jobs = RegistrationJob.query.filter_by(user_id=user.id).order_by(RegistrationJob.created_at.desc()).limit(10).all()
+    return render_template('dashboard.html', user=user, jobs=jobs)
+
+@app.route('/setup-credentials', methods=['GET', 'POST'])
+@login_required
+def setup_credentials():
+    user = User.query.get(session['user_id'])
+    
+    if request.method == 'POST':
+        gw_username = request.form['gw_username']
+        gw_password = request.form['gw_password']
+        two_fa_secret = request.form.get('two_fa_secret', '')
+        
+        user.gw_username = gw_username
+        user.gw_password = generate_password_hash(gw_password)
+        user.two_fa_secret = generate_password_hash(two_fa_secret) if two_fa_secret else None
+        
+        db.session.commit()
+        return redirect(url_for('dashboard'))
+    
+    return render_template('setup_credentials.html', user=user)
+
+@app.route('/create-job', methods=['POST'])
+@login_required
+def create_job():
+    data = request.get_json()
+    crns = data.get('crns', [])
+    scheduled_time_str = data.get('scheduled_time')
+    
+    try:
+        scheduled_time = datetime.datetime.fromisoformat(scheduled_time_str.replace('Z', '+00:00'))
+    except ValueError:
+        return jsonify({'error': 'Invalid date format'}), 400
+    
+    if not crns:
+        return jsonify({'error': 'No CRNs provided'}), 400
+    
+    job = RegistrationJob(
+        user_id=session['user_id'],
+        crns=json.dumps(crns),
+        scheduled_time=scheduled_time
+    )
+    
+    db.session.add(job)
+    db.session.commit()
+    
+    schedule_job(job.id)
+    
+    return jsonify({'success': True, 'job_id': job.id})
+
+@app.route('/job-status/<int:job_id>')
+@login_required
+def job_status(job_id):
+    job = RegistrationJob.query.get(job_id)
+    if not job or job.user_id != session['user_id']:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    logs = RegistrationLog.query.filter_by(job_id=job_id).order_by(RegistrationLog.timestamp.desc()).all()
+    
+    return jsonify({
+        'status': job.status,
+        'error_message': job.error_message,
+        'logs': [{'message': log.message, 'timestamp': log.timestamp.isoformat(), 'level': log.level} for log in logs]
+    })
+
+def create_driver():
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--window-size=1920,1080')
+    
+    try:
+        driver = webdriver.Chrome(options=chrome_options)
+        return driver
+    except Exception as e:
+        print(f"Error creating Chrome driver: {e}")
+        return None
+
+def log_job_message(job_id, message, level='info'):
+    log = RegistrationLog(
+        job_id=job_id,
+        message=message,
+        level=level
+    )
+    db.session.add(log)
+    db.session.commit()
+
+def execute_registration_job(job_id):
+    job = RegistrationJob.query.get(job_id)
+    if not job:
+        return
+    
+    job.status = 'running'
+    db.session.commit()
+    
+    log_job_message(job_id, f"Starting registration job for {len(json.loads(job.crns))} CRNs")
+    
+    user = User.query.get(job.user_id)
+    if not user or not user.gw_username or not user.gw_password:
+        job.status = 'failed'
+        job.error_message = 'User credentials not configured'
+        db.session.commit()
+        return
+    
+    driver = create_driver()
+    if not driver:
+        job.status = 'failed'
+        job.error_message = 'Failed to create browser driver'
+        db.session.commit()
+        return
+    
+    try:
+        driver.get("https://gweb-site.gwu.edu/")
+        log_job_message(job_id, "Navigated to GW SSO page")
+        
+        wait = WebDriverWait(driver, 30)
+        
+        username_field = wait.until(EC.presence_of_element_located((By.NAME, "username")))
+        username_field.send_keys(user.gw_username)
+        log_job_message(job_id, "Entered username")
+        
+        password_field = driver.find_element(By.NAME, "password")
+        password_field.send_keys(user.gw_password)
+        log_job_message(job_id, "Entered password")
+        
+        login_button = driver.find_element(By.XPATH, "//input[@type='submit']")
+        login_button.click()
+        log_job_message(job_id, "Submitted login form")
+        
+        time.sleep(5)
+        
+        if "2fa" in driver.current_url.lower() or "duo" in driver.current_url.lower():
+            log_job_message(job_id, "2FA required - waiting for manual completion", "warning")
+            job.status = 'failed'
+            job.error_message = '2FA required - manual intervention needed'
+            db.session.commit()
+            return
+        
+        driver.get("https://bssoweb.gwu.edu:8002/StudentRegistrationSsb/ssb/registration/")
+        log_job_message(job_id, "Navigated to registration page")
+        
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        
+        crns = json.loads(job.crns)
+        for i, crn in enumerate(crns, 1):
+            try:
+                inputs = driver.find_elements(By.TAG_NAME, "input")
+                target = None
+                
+                for inp in inputs:
+                    try:
+                        maxlength = inp.get_attribute("maxlength")
+                        value_attr = inp.get_attribute("value")
+                        if (maxlength and int(maxlength) >= 5) and (not value_attr):
+                            target = inp
+                            break
+                    except Exception:
+                        continue
+                
+                if target:
+                    target.clear()
+                    target.send_keys(crn)
+                    log_job_message(job_id, f"Entered CRN {crn}")
+                    time.sleep(0.5)
+                else:
+                    log_job_message(job_id, f"Could not find input field for CRN {crn}", "warning")
+                    
+            except Exception as e:
+                log_job_message(job_id, f"Error entering CRN {crn}: {str(e)}", "error")
+        
+        possible_button_selectors = [
+            (By.NAME, "REG_BTN"),
+            (By.ID, "submitBtn"),
+            (By.XPATH, "//input[@type='submit' and contains(@value,'Register')]"),
+            (By.XPATH, "//button[contains(., 'Register') or contains(., 'Submit')]"),
+        ]
+        
+        clicked = False
+        for sel in possible_button_selectors:
+            try:
+                btn = driver.find_element(*sel)
+                btn.click()
+                log_job_message(job_id, "Clicked registration button")
+                clicked = True
+                break
+            except Exception:
+                continue
+        
+        if not clicked:
+            log_job_message(job_id, "Could not find registration button", "warning")
+        
+        time.sleep(3)
+        page_text = driver.find_element(By.TAG_NAME, "body").text
+        log_job_message(job_id, f"Registration completed. Page content: {page_text[:200]}...")
+        
+        job.status = 'completed'
+        job.completed_at = datetime.datetime.utcnow()
+        db.session.commit()
+        
+    except Exception as e:
+        job.status = 'failed'
+        job.error_message = str(e)
+        job.completed_at = datetime.datetime.utcnow()
+        db.session.commit()
+        log_job_message(job_id, f"Registration failed: {str(e)}", "error")
+    
+    finally:
+        driver.quit()
+
+def schedule_job(job_id):
+    job = RegistrationJob.query.get(job_id)
+    if not job:
+        return
+    
+    def run_job():
+        execute_registration_job(job_id)
+    
+    local_time = job.scheduled_time.replace(tzinfo=None)
+    schedule.every().day.at(local_time.strftime("%H:%M")).do(run_job)
+    
+    log_job_message(job_id, f"Job scheduled for {local_time}")
+
+def run_scheduler():
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+scheduler_thread.start()
+
+def cleanup():
+    pass
+
+atexit.register(cleanup)
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    
+    print("Starting GW Auto-Registration Server...")
+    print("Access the application at: http://localhost:5000")
+    app.run(debug=True, host='0.0.0.0', port=5000)
