@@ -33,6 +33,8 @@ class User(db.Model):
     gw_username = db.Column(db.String(80), nullable=True)
     gw_password = db.Column(db.String(120), nullable=True)
     two_fa_secret = db.Column(db.String(120), nullable=True)
+    session_cookies = db.Column(db.Text, nullable=True)
+    cookies_expiry = db.Column(db.DateTime, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
@@ -184,16 +186,50 @@ def job_status(job_id):
         'logs': [{'message': log.message, 'timestamp': log.timestamp.isoformat(), 'level': log.level} for log in logs]
     })
 
-def create_driver():
+@app.route('/test-login', methods=['POST'])
+@login_required
+def test_login():
+    user = User.query.get(session['user_id'])
+    if not user or not user.gw_username or not user.gw_password:
+        return jsonify({'error': 'GW credentials not configured'}), 400
+    
+    try:
+        driver = create_driver()
+        if not driver:
+            return jsonify({'error': 'Failed to create browser driver'}), 500
+        
+        success, cookies = perform_login_and_save_cookies(driver, user)
+        
+        if success:
+            user.session_cookies = json.dumps(cookies)
+            user.cookies_expiry = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+            db.session.commit()
+            
+            driver.quit()
+            return jsonify({'success': True, 'message': 'Login successful! Cookies saved for 24 hours.'})
+        else:
+            driver.quit()
+            return jsonify({'error': 'Login failed. Please check your credentials.'}), 400
+            
+    except Exception as e:
+        return jsonify({'error': f'Login test failed: {str(e)}'}), 500
+
+def create_driver(headless=True):
     chrome_options = Options()
-    chrome_options.add_argument('--headless')
+    if headless:
+        chrome_options.add_argument('--headless')
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-gpu')
     chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     
     try:
         driver = webdriver.Chrome(options=chrome_options)
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         return driver
     except Exception as e:
         print(f"Error creating Chrome driver: {e}")
@@ -208,6 +244,58 @@ def log_job_message(job_id, message, level='info'):
     db.session.add(log)
     db.session.commit()
 
+def perform_login_and_save_cookies(driver, user):
+    try:
+        driver.get("https://gweb-site.gwu.edu/")
+        time.sleep(2)
+        
+        wait = WebDriverWait(driver, 30)
+        
+        username_field = wait.until(EC.presence_of_element_located((By.NAME, "username")))
+        username_field.clear()
+        username_field.send_keys(user.gw_username)
+        
+        password_field = driver.find_element(By.NAME, "password")
+        password_field.clear()
+        password_field.send_keys(user.gw_password)
+        
+        login_button = driver.find_element(By.XPATH, "//input[@type='submit']")
+        login_button.click()
+        
+        time.sleep(3)
+        
+        if "2fa" in driver.current_url.lower() or "duo" in driver.current_url.lower():
+            return False, None
+        
+        if "bssoweb" in driver.current_url.lower() or "gwu.edu" in driver.current_url.lower():
+            cookies = driver.get_cookies()
+            return True, cookies
+        
+        return False, None
+        
+    except Exception as e:
+        print(f"Login error: {e}")
+        return False, None
+
+def load_cookies_to_driver(driver, cookies_json):
+    try:
+        cookies = json.loads(cookies_json)
+        driver.get("https://gweb-site.gwu.edu/")
+        time.sleep(1)
+        
+        for cookie in cookies:
+            try:
+                driver.add_cookie(cookie)
+            except Exception as e:
+                continue
+        
+        driver.refresh()
+        time.sleep(2)
+        return True
+    except Exception as e:
+        print(f"Cookie loading error: {e}")
+        return False
+
 def execute_registration_job(job_id):
     job = RegistrationJob.query.get(job_id)
     if not job:
@@ -216,7 +304,7 @@ def execute_registration_job(job_id):
     job.status = 'running'
     db.session.commit()
     
-    log_job_message(job_id, f"Starting registration job for {len(json.loads(job.crns))} CRNs")
+    log_job_message(job_id, f"Starting FAST registration job for {len(json.loads(job.crns))} CRNs")
     
     user = User.query.get(job.user_id)
     if not user or not user.gw_username or not user.gw_password:
@@ -225,7 +313,7 @@ def execute_registration_job(job_id):
         db.session.commit()
         return
     
-    driver = create_driver()
+    driver = create_driver(headless=True)
     if not driver:
         job.status = 'failed'
         job.error_message = 'Failed to create browser driver'
@@ -233,90 +321,82 @@ def execute_registration_job(job_id):
         return
     
     try:
-        driver.get("https://gweb-site.gwu.edu/")
-        log_job_message(job_id, "Navigated to GW SSO page")
+        cookies_loaded = False
+        if user.session_cookies and user.cookies_expiry and user.cookies_expiry > datetime.datetime.utcnow():
+            log_job_message(job_id, "Using saved cookies for instant login")
+            cookies_loaded = load_cookies_to_driver(driver, user.session_cookies)
         
-        wait = WebDriverWait(driver, 30)
-        
-        username_field = wait.until(EC.presence_of_element_located((By.NAME, "username")))
-        username_field.send_keys(user.gw_username)
-        log_job_message(job_id, "Entered username")
-        
-        password_field = driver.find_element(By.NAME, "password")
-        password_field.send_keys(user.gw_password)
-        log_job_message(job_id, "Entered password")
-        
-        login_button = driver.find_element(By.XPATH, "//input[@type='submit']")
-        login_button.click()
-        log_job_message(job_id, "Submitted login form")
-        
-        time.sleep(5)
-        
-        if "2fa" in driver.current_url.lower() or "duo" in driver.current_url.lower():
-            log_job_message(job_id, "2FA required - waiting for manual completion", "warning")
-            job.status = 'failed'
-            job.error_message = '2FA required - manual intervention needed'
+        if not cookies_loaded:
+            log_job_message(job_id, "Performing fresh login")
+            success, cookies = perform_login_and_save_cookies(driver, user)
+            if not success:
+                job.status = 'failed'
+                job.error_message = 'Login failed'
+                db.session.commit()
+                return
+            
+            user.session_cookies = json.dumps(cookies)
+            user.cookies_expiry = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
             db.session.commit()
-            return
         
         driver.get("https://bssoweb.gwu.edu:8002/StudentRegistrationSsb/ssb/registration/")
         log_job_message(job_id, "Navigated to registration page")
         
+        wait = WebDriverWait(driver, 10)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         
         crns = json.loads(job.crns)
+        log_job_message(job_id, f"Attempting to register for CRNs: {', '.join(crns)}")
+        
         for i, crn in enumerate(crns, 1):
             try:
-                inputs = driver.find_elements(By.TAG_NAME, "input")
-                target = None
-                
-                for inp in inputs:
-                    try:
-                        maxlength = inp.get_attribute("maxlength")
-                        value_attr = inp.get_attribute("value")
-                        if (maxlength and int(maxlength) >= 5) and (not value_attr):
-                            target = inp
+                crn_input = driver.find_element(By.ID, f"txt_crn{i}")
+                crn_input.clear()
+                crn_input.send_keys(crn)
+                log_job_message(job_id, f"Entered CRN {crn} in field {i}")
+                time.sleep(0.1)
+            except:
+                try:
+                    crn_inputs = driver.find_elements(By.CSS_SELECTOR, "input[name*='crn'], input[id*='crn']")
+                    for inp in crn_inputs:
+                        if not inp.get_attribute("value"):
+                            inp.clear()
+                            inp.send_keys(crn)
+                            log_job_message(job_id, f"Entered CRN {crn}")
                             break
-                    except Exception:
-                        continue
-                
-                if target:
-                    target.clear()
-                    target.send_keys(crn)
-                    log_job_message(job_id, f"Entered CRN {crn}")
-                    time.sleep(0.5)
-                else:
-                    log_job_message(job_id, f"Could not find input field for CRN {crn}", "warning")
-                    
-            except Exception as e:
-                log_job_message(job_id, f"Error entering CRN {crn}: {str(e)}", "error")
+                except Exception as e:
+                    log_job_message(job_id, f"Error entering CRN {crn}: {str(e)}", "error")
         
-        possible_button_selectors = [
-            (By.NAME, "REG_BTN"),
-            (By.ID, "submitBtn"),
-            (By.XPATH, "//input[@type='submit' and contains(@value,'Register')]"),
-            (By.XPATH, "//button[contains(., 'Register') or contains(., 'Submit')]"),
-        ]
+        time.sleep(0.5)
         
-        clicked = False
-        for sel in possible_button_selectors:
+        submit_button = driver.find_element(By.ID, "add_crn_button")
+        submit_button.click()
+        log_job_message(job_id, "Clicked Add Courses button")
+        
+        time.sleep(1)
+        
+        try:
+            register_button = driver.find_element(By.ID, "register_button")
+            register_button.click()
+            log_job_message(job_id, "Clicked Register button")
+        except:
             try:
-                btn = driver.find_element(*sel)
-                btn.click()
-                log_job_message(job_id, "Clicked registration button")
-                clicked = True
-                break
-            except Exception:
-                continue
+                register_button = driver.find_element(By.XPATH, "//input[@value='Register']")
+                register_button.click()
+                log_job_message(job_id, "Clicked Register button (alternative)")
+            except:
+                log_job_message(job_id, "Could not find register button", "warning")
         
-        if not clicked:
-            log_job_message(job_id, "Could not find registration button", "warning")
+        time.sleep(2)
         
-        time.sleep(3)
         page_text = driver.find_element(By.TAG_NAME, "body").text
-        log_job_message(job_id, f"Registration completed. Page content: {page_text[:200]}...")
+        if "successfully" in page_text.lower() or "registered" in page_text.lower():
+            log_job_message(job_id, "Registration appears successful!")
+            job.status = 'completed'
+        else:
+            log_job_message(job_id, f"Registration completed. Check results: {page_text[:300]}...")
+            job.status = 'completed'
         
-        job.status = 'completed'
         job.completed_at = datetime.datetime.utcnow()
         db.session.commit()
         

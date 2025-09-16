@@ -8,9 +8,14 @@
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2><i class="fas fa-tachometer-alt me-2"></i>Dashboard</h2>
-                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createJobModal">
-                    <i class="fas fa-plus me-2"></i>Create Registration Job
-                </button>
+                <div>
+                    <button class="btn btn-success me-2" onclick="testLogin()">
+                        <i class="fas fa-key me-2"></i>Test Login & Save Cookies
+                    </button>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createJobModal">
+                        <i class="fas fa-plus me-2"></i>Create Registration Job
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -189,6 +194,33 @@
 
 {% block scripts %}
 <script>
+function testLogin() {
+    if (!confirm('This will test your GW login and save cookies for faster registration. Continue?')) {
+        return;
+    }
+    
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Testing Login...';
+    button.disabled = true;
+    
+    axios.post('/test-login')
+    .then(response => {
+        if (response.data.success) {
+            alert('✅ Login successful! Cookies saved for 24 hours. Registration will be super fast now!');
+        } else {
+            alert('❌ Login failed: ' + response.data.error);
+        }
+    })
+    .catch(error => {
+        alert('❌ Login test failed: ' + (error.response?.data?.error || error.message));
+    })
+    .finally(() => {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+}
+
 function createJob() {
     const crns = document.getElementById('crns').value.split(',').map(crn => crn.trim()).filter(crn => crn);
     const scheduledTime = document.getElementById('scheduledTime').value;
