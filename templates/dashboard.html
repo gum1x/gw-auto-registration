@@ -3,73 +3,249 @@
 {% block title %}Dashboard - GW Auto-Registration{% endblock %}
 
 {% block content %}
+<style>
+.dashboard-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem 0;
+    margin-bottom: 2rem;
+    border-radius: 15px;
+}
+
+.stats-card {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    border: none;
+    overflow: hidden;
+}
+
+.stats-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+}
+
+.stats-card .card-body {
+    padding: 1.5rem;
+}
+
+.stats-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.stats-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.stats-label {
+    color: #6c757d;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.jobs-table {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.jobs-table .table {
+    margin-bottom: 0;
+}
+
+.jobs-table .table th {
+    background: #f8f9fa;
+    border: none;
+    padding: 1rem;
+    font-weight: 600;
+    color: #495057;
+}
+
+.jobs-table .table td {
+    border: none;
+    padding: 1rem;
+    vertical-align: middle;
+}
+
+.jobs-table .table tbody tr {
+    border-bottom: 1px solid #f1f3f4;
+    transition: background-color 0.2s ease;
+}
+
+.jobs-table .table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.btn-action {
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+}
+
+.btn-action:hover {
+    transform: translateY(-1px);
+}
+
+.status-badge {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.modal-content {
+    border-radius: 15px;
+    border: none;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+
+.modal-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 15px 15px 0 0;
+    border: none;
+}
+
+.modal-body {
+    padding: 2rem;
+}
+
+.form-control, .form-select {
+    border-radius: 10px;
+    border: 2px solid #e9ecef;
+    padding: 0.75rem 1rem;
+    transition: all 0.2s ease;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.btn-group .btn-check:checked + .btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: #667eea;
+}
+
+.alert {
+    border-radius: 10px;
+    border: none;
+}
+
+.registration-method {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+}
+
+@media (max-width: 768px) {
+    .dashboard-header {
+        padding: 1.5rem 0;
+        margin-bottom: 1.5rem;
+    }
+    
+    .stats-number {
+        font-size: 2rem;
+    }
+    
+    .modal-body {
+        padding: 1.5rem;
+    }
+}
+</style>
 <div class="container my-5">
-    <div class="row">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2><i class="fas fa-tachometer-alt me-2"></i>Dashboard</h2>
-                <div>
-                    <button class="btn btn-success me-2" onclick="testLogin()">
-                        <i class="fas fa-key me-2"></i>Test Login & Save Cookies
+    <div class="dashboard-header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="mb-2"><i class="fas fa-tachometer-alt me-3"></i>Dashboard</h1>
+                    <p class="mb-0 opacity-75">Manage your GW class registrations with ease</p>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <a href="{{ url_for('schedules') }}" class="btn btn-light me-2 mb-2">
+                        <i class="fas fa-calendar-alt me-2"></i>Saved Schedules
+                    </a>
+                    <button class="btn btn-success me-2 mb-2" onclick="testLogin()">
+                        <i class="fas fa-key me-2"></i>Test Login
                     </button>
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createJobModal">
-                        <i class="fas fa-plus me-2"></i>Create Registration Job
+                    <button class="btn btn-warning mb-2" data-bs-toggle="modal" data-bs-target="#createJobModal">
+                        <i class="fas fa-plus me-2"></i>Create Job
                     </button>
                 </div>
             </div>
         </div>
     </div>
     
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card bg-primary text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h6 class="card-title">Total Jobs</h6>
-                            <h3>{{ jobs|length }}</h3>
-                        </div>
-                        <i class="fas fa-tasks fa-2x opacity-75"></i>
+    <div class="row mb-5">
+        <div class="col-md-3 mb-4">
+            <div class="stats-card">
+                <div class="card-body text-center">
+                    <div class="stats-icon bg-primary text-white mx-auto">
+                        <i class="fas fa-tasks"></i>
                     </div>
+                    <div class="stats-number text-primary">{{ jobs|length }}</div>
+                    <div class="stats-label">Total Jobs</div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-success text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h6 class="card-title">Completed</h6>
-                            <h3>{{ jobs|selectattr('status', 'equalto', 'completed')|list|length }}</h3>
-                        </div>
-                        <i class="fas fa-check-circle fa-2x opacity-75"></i>
+        <div class="col-md-3 mb-4">
+            <div class="stats-card">
+                <div class="card-body text-center">
+                    <div class="stats-icon bg-success text-white mx-auto">
+                        <i class="fas fa-check-circle"></i>
                     </div>
+                    <div class="stats-number text-success">{{ jobs|selectattr('status', 'equalto', 'completed')|list|length }}</div>
+                    <div class="stats-label">Completed</div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-warning text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h6 class="card-title">Pending</h6>
-                            <h3>{{ jobs|selectattr('status', 'equalto', 'pending')|list|length }}</h3>
-                        </div>
-                        <i class="fas fa-clock fa-2x opacity-75"></i>
+        <div class="col-md-3 mb-4">
+            <div class="stats-card">
+                <div class="card-body text-center">
+                    <div class="stats-icon bg-warning text-white mx-auto">
+                        <i class="fas fa-clock"></i>
                     </div>
+                    <div class="stats-number text-warning">{{ jobs|selectattr('status', 'equalto', 'pending')|list|length }}</div>
+                    <div class="stats-label">Pending</div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-danger text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h6 class="card-title">Failed</h6>
-                            <h3>{{ jobs|selectattr('status', 'equalto', 'failed')|list|length }}</h3>
-                        </div>
-                        <i class="fas fa-exclamation-triangle fa-2x opacity-75"></i>
+        <div class="col-md-3 mb-4">
+            <div class="stats-card">
+                <div class="card-body text-center">
+                    <div class="stats-icon bg-danger text-white mx-auto">
+                        <i class="fas fa-exclamation-triangle"></i>
                     </div>
+                    <div class="stats-number text-danger">{{ jobs|selectattr('status', 'equalto', 'failed')|list|length }}</div>
+                    <div class="stats-label">Failed</div>
                 </div>
             </div>
         </div>
@@ -77,45 +253,53 @@
     
     <div class="row">
         <div class="col-12">
-            <div class="card">
-                <div class="card-header">
+            <div class="jobs-table">
+                <div class="card-header bg-white border-0">
                     <h5 class="mb-0"><i class="fas fa-history me-2"></i>Recent Registration Jobs</h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-0">
                     {% if jobs %}
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table class="table table-hover mb-0">
                             <thead>
                                 <tr>
-                                    <th>CRNs</th>
-                                    <th>Scheduled Time</th>
-                                    <th>Status</th>
-                                    <th>Created</th>
-                                    <th>Actions</th>
+                                    <th><i class="fas fa-list me-2"></i>CRNs</th>
+                                    <th><i class="fas fa-clock me-2"></i>Scheduled Time</th>
+                                    <th><i class="fas fa-info-circle me-2"></i>Status</th>
+                                    <th><i class="fas fa-calendar me-2"></i>Created</th>
+                                    <th><i class="fas fa-cogs me-2"></i>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for job in jobs %}
                                 <tr>
                                     <td>
-                                        <span class="badge bg-secondary me-1">{{ job.crns|from_json|join(', ') }}</span>
+                                        {% for crn in job.crns|from_json %}
+                                        <span class="badge bg-primary me-1">{{ crn }}</span>
+                                        {% endfor %}
                                     </td>
-                                    <td>{{ job.scheduled_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td>
+                                        <strong>{{ job.scheduled_time.strftime('%Y-%m-%d') }}</strong><br>
+                                        <small class="text-muted">{{ job.scheduled_time.strftime('%H:%M:%S') }}</small>
+                                    </td>
                                     <td>
                                         {% if job.status == 'pending' %}
-                                        <span class="badge bg-warning status-badge">Pending</span>
+                                        <span class="status-badge bg-warning text-dark">Pending</span>
                                         {% elif job.status == 'running' %}
-                                        <span class="badge bg-info status-badge">Running</span>
+                                        <span class="status-badge bg-info text-white">Running</span>
                                         {% elif job.status == 'completed' %}
-                                        <span class="badge bg-success status-badge">Completed</span>
+                                        <span class="status-badge bg-success text-white">Completed</span>
                                         {% elif job.status == 'failed' %}
-                                        <span class="badge bg-danger status-badge">Failed</span>
+                                        <span class="status-badge bg-danger text-white">Failed</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                                     <td>
-                                        <button class="btn btn-sm btn-outline-primary" onclick="viewJobDetails({{ job.id }})">
-                                            <i class="fas fa-eye"></i>
+                                        <strong>{{ job.created_at.strftime('%Y-%m-%d') }}</strong><br>
+                                        <small class="text-muted">{{ job.created_at.strftime('%H:%M') }}</small>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-action btn-outline-primary" onclick="viewJobDetails({{ job.id }})">
+                                            <i class="fas fa-eye me-1"></i>View
                                         </button>
                                     </td>
                                 </tr>
@@ -124,10 +308,13 @@
                         </table>
                     </div>
                     {% else %}
-                    <div class="text-center py-5">
-                        <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-                        <h5 class="text-muted">No registration jobs yet</h5>
-                        <p class="text-muted">Create your first registration job to get started!</p>
+                    <div class="empty-state">
+                        <i class="fas fa-inbox"></i>
+                        <h5>No registration jobs yet</h5>
+                        <p>Create your first registration job to get started!</p>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createJobModal">
+                            <i class="fas fa-plus me-2"></i>Create Your First Job
+                        </button>
                     </div>
                     {% endif %}
                 </div>
@@ -147,9 +334,36 @@
             <div class="modal-body">
                 <form id="createJobForm">
                     <div class="mb-3">
-                        <label for="crns" class="form-label">CRNs (Course Reference Numbers)</label>
-                        <input type="text" class="form-control" id="crns" placeholder="12345, 23456, 34567" required>
-                        <div class="form-text">Enter CRNs separated by commas</div>
+                        <label class="form-label">Registration Method</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="registrationMethod" id="manualMethod" value="manual" checked>
+                            <label class="btn btn-outline-primary" for="manualMethod">
+                                <i class="fas fa-keyboard me-2"></i>Manual Entry
+                            </label>
+                            
+                            <input type="radio" class="btn-check" name="registrationMethod" id="scheduleMethod" value="schedule">
+                            <label class="btn btn-outline-primary" for="scheduleMethod">
+                                <i class="fas fa-calendar-alt me-2"></i>Saved Schedule
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div id="manualEntry" class="registration-method">
+                        <div class="mb-3">
+                            <label for="crns" class="form-label">CRNs (Course Reference Numbers)</label>
+                            <input type="text" class="form-control" id="crns" placeholder="12345, 23456, 34567">
+                            <div class="form-text">Enter CRNs separated by commas</div>
+                        </div>
+                    </div>
+                    
+                    <div id="scheduleEntry" class="registration-method" style="display: none;">
+                        <div class="mb-3">
+                            <label for="scheduleSelect" class="form-label">Select Schedule</label>
+                            <select class="form-select" id="scheduleSelect">
+                                <option value="">Loading schedules...</option>
+                            </select>
+                            <div class="form-text">Choose from your saved schedules</div>
+                        </div>
                     </div>
                     
                     <div class="mb-3">
@@ -222,23 +436,33 @@ function testLogin() {
 }
 
 function createJob() {
-    const crns = document.getElementById('crns').value.split(',').map(crn => crn.trim()).filter(crn => crn);
+    const method = document.querySelector('input[name="registrationMethod"]:checked').value;
     const scheduledTime = document.getElementById('scheduledTime').value;
-    
-    if (crns.length === 0) {
-        alert('Please enter at least one CRN');
-        return;
-    }
     
     if (!scheduledTime) {
         alert('Please select a scheduled time');
         return;
     }
     
-    axios.post('/create-job', {
-        crns: crns,
-        scheduled_time: scheduledTime
-    })
+    let requestData = { scheduled_time: scheduledTime };
+    
+    if (method === 'manual') {
+        const crns = document.getElementById('crns').value.split(',').map(crn => crn.trim()).filter(crn => crn);
+        if (crns.length === 0) {
+            alert('Please enter at least one CRN');
+            return;
+        }
+        requestData.crns = crns;
+    } else {
+        const scheduleId = document.getElementById('scheduleSelect').value;
+        if (!scheduleId) {
+            alert('Please select a schedule');
+            return;
+        }
+        requestData.schedule_id = scheduleId;
+    }
+    
+    axios.post('/create-job', requestData)
     .then(response => {
         if (response.data.success) {
             location.reload();
@@ -247,7 +471,7 @@ function createJob() {
         }
     })
     .catch(error => {
-        alert('Error creating job: ' + error.response.data.error);
+        alert('Error creating job: ' + (error.response?.data?.error || error.message));
     });
 }
 
@@ -316,6 +540,41 @@ document.addEventListener('DOMContentLoaded', function() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(8, 0, 0, 0);
     document.getElementById('scheduledTime').value = tomorrow.toISOString().slice(0, 16);
+    
+    document.querySelectorAll('input[name="registrationMethod"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const manualEntry = document.getElementById('manualEntry');
+            const scheduleEntry = document.getElementById('scheduleEntry');
+            
+            if (this.value === 'manual') {
+                manualEntry.style.display = 'block';
+                scheduleEntry.style.display = 'none';
+            } else {
+                manualEntry.style.display = 'none';
+                scheduleEntry.style.display = 'block';
+                loadSchedules();
+            }
+        });
+    });
+    
+    function loadSchedules() {
+        axios.get('/get-schedules')
+        .then(response => {
+            const select = document.getElementById('scheduleSelect');
+            select.innerHTML = '<option value="">Select a schedule...</option>';
+            
+            response.data.schedules.forEach(schedule => {
+                const option = document.createElement('option');
+                option.value = schedule.id;
+                option.textContent = `${schedule.name} (${schedule.crns.join(', ')})`;
+                select.appendChild(option);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading schedules:', error);
+            document.getElementById('scheduleSelect').innerHTML = '<option value="">Error loading schedules</option>';
+        });
+    }
 });
 </script>
 {% endblock %}

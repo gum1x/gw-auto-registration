@@ -55,6 +55,15 @@ class RegistrationLog(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     level = db.Column(db.String(20), default='info')
 
+class SavedSchedule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    crns = db.Column(db.Text, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    last_used = db.Column(db.DateTime, nullable=True)
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -148,6 +157,7 @@ def setup_credentials():
 def create_job():
     data = request.get_json()
     crns = data.get('crns', [])
+    schedule_id = data.get('schedule_id')
     scheduled_time_str = data.get('scheduled_time')
     
     try:
@@ -155,7 +165,14 @@ def create_job():
     except ValueError:
         return jsonify({'error': 'Invalid date format'}), 400
     
-    if not crns:
+    if schedule_id:
+        saved_schedule = SavedSchedule.query.get(schedule_id)
+        if not saved_schedule or saved_schedule.user_id != session['user_id']:
+            return jsonify({'error': 'Invalid schedule selected'}), 400
+        crns = json.loads(saved_schedule.crns)
+        saved_schedule.last_used = datetime.datetime.utcnow()
+        db.session.commit()
+    elif not crns:
         return jsonify({'error': 'No CRNs provided'}), 400
     
     job = RegistrationJob(
@@ -213,6 +230,70 @@ def test_login():
             
     except Exception as e:
         return jsonify({'error': f'Login test failed: {str(e)}'}), 500
+
+@app.route('/schedules')
+@login_required
+def schedules():
+    user = User.query.get(session['user_id'])
+    saved_schedules = SavedSchedule.query.filter_by(user_id=user.id).order_by(SavedSchedule.created_at.desc()).all()
+    return render_template('schedules.html', schedules=saved_schedules)
+
+@app.route('/save-schedule', methods=['POST'])
+@login_required
+def save_schedule():
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    crns = data.get('crns', [])
+    description = data.get('description', '').strip()
+    
+    if not name:
+        return jsonify({'error': 'Schedule name is required'}), 400
+    
+    if not crns:
+        return jsonify({'error': 'At least one CRN is required'}), 400
+    
+    existing = SavedSchedule.query.filter_by(user_id=session['user_id'], name=name).first()
+    if existing:
+        return jsonify({'error': 'A schedule with this name already exists'}), 400
+    
+    schedule = SavedSchedule(
+        user_id=session['user_id'],
+        name=name,
+        crns=json.dumps(crns),
+        description=description
+    )
+    
+    db.session.add(schedule)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'schedule_id': schedule.id})
+
+@app.route('/delete-schedule/<int:schedule_id>', methods=['DELETE'])
+@login_required
+def delete_schedule(schedule_id):
+    schedule = SavedSchedule.query.get(schedule_id)
+    if not schedule or schedule.user_id != session['user_id']:
+        return jsonify({'error': 'Schedule not found'}), 404
+    
+    db.session.delete(schedule)
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/get-schedules')
+@login_required
+def get_schedules():
+    schedules = SavedSchedule.query.filter_by(user_id=session['user_id']).order_by(SavedSchedule.created_at.desc()).all()
+    return jsonify({
+        'schedules': [{
+            'id': s.id,
+            'name': s.name,
+            'crns': json.loads(s.crns),
+            'description': s.description,
+            'created_at': s.created_at.isoformat(),
+            'last_used': s.last_used.isoformat() if s.last_used else None
+        } for s in schedules]
+    })
 
 def create_driver(headless=True):
     chrome_options = Options()
